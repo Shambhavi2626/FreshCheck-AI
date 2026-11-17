@@ -1,0 +1,46 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FreshCheck AI — Dashboard</title><link rel="stylesheet" href="/static/style.css"><script src="https://cdn.jsdelivr.net/npm/chart.js"></script></head>
+<body><header><div class="brand">🍎 FreshCheck AI</div><nav><a href="/">New Scan</a><a href="/dashboard" class="active">Dashboard</a><span class="nav-user">Hi, {{ session.get("user_name","User") }}</span><form method="post" action="/logout" class="logout-inline"><button class="logout-link" type="submit">Logout ↗</button></form></nav></header>
+<main class="container dashboard-container">
+<section class="hero dashboard-hero"><span>YOUR FOOD QUALITY OVERVIEW</span><h1>Welcome back, {{ session.get("user_name","User") }}</h1><p>Track your food scans, review freshness estimates and revisit captured locations.</p><a class="primary button-link" href="/">＋ Start a new scan</a></section>
+<section class="stats-grid"><div class="stat-card"><small>Total scans</small><b id="total">0</b><span>All your saved scans</span></div><div class="stat-card"><small>Fresh results</small><b id="fresh">0</b><span>Condition marked Fresh</span></div><div class="stat-card"><small>Average score</small><b id="average">—</b><span>Across your scans</span></div><div class="stat-card"><small>Food items</small><b id="foods">0</b><span>Distinct food types</span></div></section>
+<section class="chart-grid">
+<div class="card chart-card"><div class="section-heading"><div><h2>Freshness score trend</h2><p class="muted">Your latest saved scans, in time order</p></div><span class="tag">LINE VIEW</span></div><div class="chart-wrap"><canvas id="trendChart"></canvas></div></div>
+<div class="card chart-card"><div class="section-heading"><div><h2>Condition breakdown</h2><p class="muted">Fresh · Ripe · Spoiled</p></div><span class="tag">RING VIEW</span></div><div class="donut-wrap"><canvas id="conditionChart"></canvas><div class="donut-center"><b id="donutTotal">0</b><small>scans</small></div></div><div class="legend"><span><i class="fresh-dot"></i>Fresh</span><span><i class="ripe-dot"></i>Ripe</span><span><i class="spoiled-dot"></i>Spoiled</span></div></div>
+</section>
+<section class="card"><div class="section-heading"><div><h2>Food-wise freshness</h2><p class="muted">Average score grouped by the food type selected during scanning.</p></div><span class="tag">BY FOOD</span></div><div id="foodAnalytics" class="food-analytics"><p class="muted">Your food analytics will appear after your first scan.</p></div></section>
+<section class="card"><div class="section-heading"><div><h2>Scan locations</h2><p class="muted">Only scans with GPS permission appear on the map.</p></div><span class="tag">GPS HISTORY</span></div><div id="historyMap" class="map"></div></section>
+<section class="card"><div class="section-heading"><div><h2>Recent scan history</h2><p class="muted">Your scans are saved to your account.</p></div><span class="tag">MY SCANS</span></div><div id="history" class="history-list"><p class="muted">Loading scans…</p></div></section>
+</main>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script><link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script>
+(async()=>{
+ const $=id=>document.getElementById(id);
+ const res=await fetch('/api/scans'); if(!res.ok) throw new Error('Unable to load scans');
+ const scans=await res.json(), ordered=[...scans].reverse();
+ const count=x=>scans.filter(s=>s.condition===x).length;
+ $('total').textContent=scans.length; $('fresh').textContent=count('Fresh');
+ $('average').textContent=scans.length?Math.round(scans.reduce((a,s)=>a+Number(s.quality_score||0),0)/scans.length)+'%':'—';
+ $('foods').textContent=new Set(scans.map(s=>s.food_type||'Food')).size;
+ $('donutTotal').textContent=scans.length;
+ const common={responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}}};
+ new Chart($('trendChart'),{type:'line',data:{labels:ordered.map((s,i)=>s.food_type+' '+(i+1)),datasets:[{data:ordered.map(s=>s.quality_score),borderColor:'#54e6a0',backgroundColor:'rgba(84,230,160,.12)',fill:true,tension:.36,pointRadius:4,pointBackgroundColor:'#54e6a0'}]},options:{...common,scales:{y:{min:0,max:100,grid:{color:'#263c31'},ticks:{color:'#9bb2a4',callback:v=>v+'%'}},x:{grid:{display:false},ticks:{color:'#9bb2a4',maxRotation:0,autoSkip:true}}}}});
+ new Chart($('conditionChart'),{type:'doughnut',data:{labels:['Fresh','Ripe','Spoiled'],datasets:[{data:[count('Fresh'),count('Ripe'),count('Spoiled')],backgroundColor:['#4fe1a0','#e8bb63','#ef7777'],borderColor:'#101b16',borderWidth:5,hoverOffset:8}]},options:{...common,cutout:'76%'}});
+ const groups={}; scans.forEach(s=>{const k=s.food_type||'Food';(groups[k]??=[]).push(Number(s.quality_score||0));});
+ const foodBox=$('foodAnalytics');foodBox.innerHTML='';
+ if(!Object.keys(groups).length){foodBox.innerHTML='<p class="muted">Your food analytics will appear after your first scan.</p>';}
+ Object.entries(groups).forEach(([name,values])=>{const avg=Math.round(values.reduce((a,b)=>a+b,0)/values.length);const row=document.createElement('div');row.className='food-row';const nm=document.createElement('b');nm.textContent=name;const bar=document.createElement('div');bar.className='food-bar';const fill=document.createElement('span');fill.style.width=avg+'%';bar.append(fill);const score=document.createElement('strong');score.textContent=avg+'%';row.append(nm,bar,score);foodBox.append(row);});
+ const map=L.map('historyMap').setView([20.5937,78.9629],5);L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(map);
+ const points=[];const hist=$('history');hist.innerHTML='';
+ if(!scans.length)hist.innerHTML='<div class="empty-state">No scans yet. Start with a new scan to see your history.</div>';
+ scans.forEach(scan=>{
+  const row=document.createElement('article');row.className='history-row';
+  const pic=document.createElement('img');pic.className='history-thumb';pic.src=scan.image||((scan.images||[])[0]?.url)||((scan.video_frames||[])[0])||'';pic.alt=scan.food_type||'Food scan';
+  const details=document.createElement('div');details.className='history-details';
+  const title=document.createElement('b');title.textContent=(scan.food_type||'Food')+' · '+scan.condition;const meta=document.createElement('p');meta.textContent=scan.quality_score+'% freshness estimate · '+scan.date_time+' · '+scan.analyzed_views+' view(s)';details.append(title,meta);
+  const action=document.createElement('a');action.href='/result/'+scan.id;action.className='history-open';action.textContent='View report →';row.append(pic,details,action);hist.append(row);
+  if(scan.latitude&&scan.longitude){const la=Number(scan.latitude),lo=Number(scan.longitude);if(Number.isFinite(la)&&Number.isFinite(lo)){L.marker([la,lo]).addTo(map).bindPopup((scan.food_type||'Food')+' · '+scan.quality_score+'%');points.push([la,lo]);}}
+ });
+ if(points.length)map.fitBounds(points,{padding:[25,25],maxZoom:13});setTimeout(()=>map.invalidateSize(),200);
+})().catch(e=>{document.getElementById('history').textContent=e.message;});
+</script></body></html>

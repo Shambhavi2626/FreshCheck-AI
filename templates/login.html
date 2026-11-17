@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <title>FreshCheck AI — Welcome Back</title>
+
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+
+<body>
+
+    <main class="auth-wrap">
+
+        <section class="auth-card">
+
+            <div class="brand">
+                <span class="apple">🍎</span>
+                FreshCheck AI
+            </div>
+
+            <h1>Welcome Back</h1>
+
+            <p>
+                Sign in to securely access your food quality scans and history.
+            </p>
+
+            {% if error %}
+                <div class="auth-error">{{ error }}</div>
+            {% endif %}
+
+            <form method="post">
+
+                <label for="email">Email Address</label>
+
+                <input
+                    id="email"
+                    name="email"
+                    type="email"
+                    placeholder="Enter your email"
+                    required
+                >
+
+                <label for="password">Password</label>
+
+                <input
+                    id="password"
+                    name="password"
+                    type="password"
+                    placeholder="Enter your password"
+                    required
+                    minlength="6"
+                >
+
+                <button class="primary" type="submit">
+                    Log In
+                    <span>→</span>
+                </button>
+
+            </form>
+
+            <a class="auth-link" href="/register">
+                Don't have an account? Create Account
+            </a>
+
+        </section>
+
+    </main>
+
+    <script>
+
+        const card = document.querySelector(".auth-card");
+
+        document.addEventListener("mousemove", (e) => {
+
+            const x = (window.innerWidth / 2 - e.clientX) / 50;
+            const y = (window.innerHeight / 2 - e.clientY) / 50;
+
+            card.style.transform =
+                `rotateY(${-x}deg) rotateX(${y}deg)`;
+
+        });
+
+        document.addEventListener("mouseleave", () => {
+            card.style.transform = "rotateY(0deg) rotateX(0deg)";
+        });
+
+    </script>
+
+</body>
+</html>

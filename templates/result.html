@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FreshCheck AI — Scan Result</title><link rel="stylesheet" href="/static/style.css"></head>
+<body><header><div class="brand">🍎 FreshCheck AI</div><nav><a href="/">New Scan</a><a href="/dashboard">Dashboard & History</a><span class="nav-user">Hi, {{ session.get("user_name","User") }}</span><form method="post" action="/logout" class="logout-inline"><button class="logout-link" type="submit">Logout ↗</button></form></nav></header>
+<main class="container">
+<section class="hero"><span>SCAN COMPLETE · PERSONAL REPORT</span><h1>Your food quality report</h1><p>Review the model estimate, submitted views and captured scan location.</p></section>
+<section class="result-layout">
+<div class="card result-main">
+<div class="result-top"><div><span class="tag">QUALITY ESTIMATE</span><h2>{{ scan.condition }}</h2><p class="muted">Scan #{{ scan.id }} · {{ scan.date_time }}</p></div>
+<div class="score-ring" style="--score:{{ scan.quality_score }}"><div><strong>{{ scan.quality_score }}%</strong><small>Freshness score</small></div></div></div>
+<div class="result-stats"><div><small>Model confidence</small><b>{{ scan.confidence }}%</b></div><div><small>Views / frames</small><b>{{ scan.analyzed_views }}</b></div><div><small>Video duration</small><b>{{ scan.video_duration_seconds if scan.video_duration_seconds is not none else "—" }}{% if scan.video_duration_seconds is not none %} sec{% endif %}</b></div></div>
+<h3>Recommendation</h3><p class="recommendation">{{ scan.recommendation }}</p>
+
+</div>
+<div class="card"><h2>Captured location</h2>
+{% if scan.latitude and scan.longitude %}<div class="result-coords"><span>Latitude <b>{{ scan.latitude }}</b></span><span>Longitude <b>{{ scan.longitude }}</b></span></div><p class="muted">{{ scan.address or "GPS coordinates captured" }}</p><a class="map-link" target="_blank" rel="noopener" href="https://www.google.com/maps?q={{ scan.latitude }},{{ scan.longitude }}">Open exact point in Google Maps ↗</a>
+<div class="map"><iframe title="Scan location map" width="100%" height="100%" frameborder="0" loading="lazy" src="https://maps.google.com/maps?q={{ scan.latitude }},{{ scan.longitude }}&z=15&output=embed"></iframe></div>
+{% else %}<p class="muted">No GPS location was captured for this scan.</p>{% endif %}
+</div></section>
+<section class="card"><h2>Analyzed photos and video frames</h2><div class="preview-grid">
+{% for item in scan.images %}<div class="preview-item"><img src="{{ item.url }}" alt="{{ item.side }} view"><b>{{ item.side }} view</b></div>{% endfor %}
+{% for item in scan.video_frames %}<div class="preview-item"><img src="{{ item }}" alt="Video frame"><b>Video frame</b></div>{% endfor %}
+</div></section><div class="result-actions"><a class="primary button-link" href="/">＋ Start another scan</a><a class="secondary button-link" href="/dashboard">View dashboard & history</a></div>
+</main></body></html>
