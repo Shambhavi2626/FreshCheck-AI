@@ -1,0 +1,4 @@
+Included model: RandomForest baseline
+Validation accuracy on synthetic baseline data: 0.987
+Classes: Fresh, Ripe, Spoiled
+For final academic use, retrain on real food-freshness images using train_model.py.
