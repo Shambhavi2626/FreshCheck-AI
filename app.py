@@ -1,16 +1,27 @@
-from flask import Flask, render_template, request, jsonify, redirect, url_for, session
+from flask import (
+    Flask, render_template, request, jsonify,
+    redirect, url_for, session
+)
+
 import os
 import uuid
 import json
 import mysql.connector
+
 from datetime import datetime
-from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.security import (
+    generate_password_hash,
+    check_password_hash
+)
 from functools import wraps
 from collections import Counter
+
 import numpy as np
 import cv2
 import joblib
 
+
+# ---------------- FLASK CONFIGURATION ----------------
 
 app = Flask(__name__)
 
@@ -44,6 +55,7 @@ DB_CONFIG = {
 }
 
 if DB_HOST not in ("localhost", "127.0.0.1"):
+
     DB_CONFIG.update({
         "ssl_ca": os.environ.get(
             "MYSQL_SSL_CA",
@@ -59,23 +71,33 @@ if DB_HOST not in ("localhost", "127.0.0.1"):
 class Database:
 
     def __enter__(self):
+
         self.connection = mysql.connector.connect(**DB_CONFIG)
         self.cursors = []
+
         return self
 
     def execute(self, query, params=()):
+
         cursor = self.connection.cursor(dictionary=True)
         self.cursors.append(cursor)
+
         cursor.execute(query, params)
+
         return cursor
 
     def __exit__(self, exc_type, exc_value, traceback):
+
         try:
+
             if exc_type is None:
                 self.connection.commit()
+
             else:
                 self.connection.rollback()
+
         finally:
+
             for cursor in self.cursors:
                 cursor.close()
 
@@ -89,7 +111,7 @@ def get_db():
 # ---------------- CREATE DATABASE TABLES ----------------
 
 def init_db():
-    """Create the app tables and safely add columns missing from older scans tables."""
+
     with get_db() as conn:
 
         conn.execute("""
@@ -125,19 +147,24 @@ def init_db():
             """
             SELECT COLUMN_NAME
             FROM information_schema.COLUMNS
-            WHERE TABLE_SCHEMA = %s AND TABLE_NAME = 'scans'
+            WHERE TABLE_SCHEMA = %s
+            AND TABLE_NAME = 'scans'
             """,
             (DB_CONFIG["database"],)
         ).fetchall()
 
-        existing = {row["COLUMN_NAME"] for row in columns}
+        existing = {
+            row["COLUMN_NAME"] for row in columns
+        }
 
         if "payload" not in existing:
+
             conn.execute(
                 "ALTER TABLE scans ADD COLUMN payload LONGTEXT NULL"
             )
 
         if "created_at" not in existing:
+
             conn.execute(
                 "ALTER TABLE scans ADD COLUMN created_at VARCHAR(30) NULL"
             )
@@ -161,6 +188,16 @@ def login_required(fn):
     def wrapper(*args, **kwargs):
 
         if "user_id" not in session:
+
+            # API requests must receive JSON, not HTML
+
+            if request.path.startswith("/api/"):
+
+                return jsonify({
+                    "success": False,
+                    "error": "Session expired. Please login again."
+                }), 401
+
             return redirect(url_for("login"))
 
         return fn(*args, **kwargs)
@@ -176,16 +213,20 @@ def register():
     if request.method == "POST":
 
         name = request.form.get("name", "").strip()
+
         email = request.form.get("email", "").strip().lower()
+
         password = request.form.get("password", "")
 
         if not name or not email or len(password) < 6:
+
             return render_template(
                 "register.html",
                 error="Enter your name, valid email and password (at least 6 characters)."
             )
 
         try:
+
             with get_db() as conn:
 
                 cur = conn.execute(
@@ -205,12 +246,15 @@ def register():
                 new_user_id = cur.lastrowid
 
             session.clear()
+
             session["user_id"] = new_user_id
+
             session["user_name"] = name
 
             return redirect(url_for("index"))
 
         except mysql.connector.IntegrityError:
+
             return render_template(
                 "register.html",
                 error="This email is already registered. Please log in."
@@ -227,9 +271,11 @@ def login():
     if request.method == "POST":
 
         email = request.form.get("email", "").strip().lower()
+
         password = request.form.get("password", "")
 
         with get_db() as conn:
+
             user = conn.execute(
                 "SELECT * FROM users WHERE email=%s",
                 (email,)
@@ -240,6 +286,7 @@ def login():
         ):
 
             with get_db() as conn:
+
                 conn.execute(
                     """
                     INSERT INTO login_events
@@ -250,7 +297,9 @@ def login():
                 )
 
             session.clear()
+
             session["user_id"] = user["id"]
+
             session["user_name"] = user["name"]
 
             return redirect(url_for("index"))
@@ -277,7 +326,9 @@ def logout():
 # ---------------- AI MODEL ----------------
 
 MODEL_PATH = os.path.join(
-    BASE_DIR, "model", "freshness_model.joblib"
+    BASE_DIR,
+    "model",
+    "freshness_model.joblib"
 )
 
 model = joblib.load(MODEL_PATH)
@@ -296,11 +347,13 @@ def extract_features(img):
     img = cv2.resize(img, (224, 224))
 
     rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+
     hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
 
     mean_rgb = rgb.mean(axis=(0, 1))
 
     sat = float(hsv[:, :, 1].mean())
+
     val = float(hsv[:, :, 2].mean())
 
     brown_mask = (
@@ -314,7 +367,8 @@ def extract_features(img):
     dark_mask = hsv[:, :, 2] < 75
 
     gray = cv2.cvtColor(
-        img, cv2.COLOR_BGR2GRAY
+        img,
+        cv2.COLOR_BGR2GRAY
     )
 
     texture = float(gray.std())
@@ -336,6 +390,7 @@ def predict_image(path):
     img = cv2.imread(path)
 
     if img is None:
+
         raise ValueError(
             "Could not read one of the uploaded images."
         )
@@ -363,6 +418,7 @@ def predict_image(path):
 
     return LABELS[pred], quality, round(confidence, 1)
 
+
 # ---------------- VIDEO ANALYSIS ----------------
 
 def analyze_video(video_path, max_frames=5):
@@ -370,6 +426,7 @@ def analyze_video(video_path, max_frames=5):
     cap = cv2.VideoCapture(video_path)
 
     if not cap.isOpened():
+
         raise ValueError(
             "Could not open the uploaded video. Please use MP4, MOV or AVI."
         )
@@ -383,6 +440,7 @@ def analyze_video(video_path, max_frames=5):
     duration = (total / fps) if fps > 0 else 0
 
     if total <= 0:
+
         cap.release()
 
         raise ValueError(
@@ -397,6 +455,7 @@ def analyze_video(video_path, max_frames=5):
     )
 
     results = []
+
     saved_frames = []
 
     for index, frame_no in enumerate(positions):
@@ -433,6 +492,7 @@ def analyze_video(video_path, max_frames=5):
     cap.release()
 
     if not results:
+
         raise ValueError(
             "No usable frames could be extracted from this video."
         )
@@ -515,11 +575,10 @@ def scan():
         }), 400
 
     saved_images = []
+
     results = []
 
-    selected_sides = request.form.getlist(
-        "image_sides"
-    )
+    selected_sides = request.form.getlist("image_sides")
 
     try:
 
@@ -568,6 +627,7 @@ def scan():
             })
 
         video_frames = []
+
         duration = None
 
         if has_video:
@@ -618,16 +678,17 @@ def scan():
             "error": str(exc)
         }), 400
 
-    # GPS LOCATION
+    # ---------------- GPS LOCATION ----------------
 
     latitude = request.form.get("latitude") or None
+
     longitude = request.form.get("longitude") or None
 
     address_text = request.form.get(
         "address", ""
     ).strip()
 
-    # FOOD RECOMMENDATION
+    # ---------------- FOOD RECOMMENDATION ----------------
 
     recommendation = {
         "Fresh": "Looks in good condition. Store in a clean place at the appropriate temperature.",
@@ -636,6 +697,8 @@ def scan():
 
         "Spoiled": "Do not rely on this visual estimate alone. If there are spoilage signs, avoid eating it."
     }[condition]
+
+    # ---------------- SCAN RECORD ----------------
 
     scan_record = {
 
@@ -683,7 +746,7 @@ def scan():
         )
     }
 
-    # SAVE SCAN IN MYSQL
+    # ---------------- SAVE SCAN IN MYSQL ----------------
 
     with get_db() as conn:
 
@@ -696,9 +759,7 @@ def scan():
             (
                 session["user_id"],
                 json.dumps(scan_record),
-                datetime.now().isoformat(
-                    timespec="seconds"
-                )
+                datetime.now().isoformat(timespec="seconds")
             )
         )
 
@@ -717,6 +778,7 @@ def scan():
         )
 
     return jsonify(scan_record)
+
 
 # ---------------- USER SCAN HISTORY API ----------------
 
@@ -811,6 +873,7 @@ def admin_stats():
         ).fetchall()
 
     total_images = 0
+
     total_video_frames = 0
 
     for row in rows:
@@ -859,18 +922,61 @@ def protect_private_pages():
         and "user_id" not in session
     ):
 
+        # IMPORTANT:
+        # Return JSON for API requests.
+        # Do not redirect API requests to the login HTML page.
+
+        if request.path.startswith("/api/"):
+
+            return jsonify({
+                "success": False,
+                "error": "Session expired. Please login again."
+            }), 401
+
         return redirect(
             url_for("login")
         )
 
 
+# ---------------- API ERROR HANDLERS ----------------
+
+@app.errorhandler(404)
+def page_not_found(error):
+
+    if request.path.startswith("/api/"):
+
+        return jsonify({
+            "success": False,
+            "error": "API endpoint not found."
+        }), 404
+
+    return "Page not found.", 404
+
+
+@app.errorhandler(500)
+def internal_server_error(error):
+
+    if request.path.startswith("/api/"):
+
+        return jsonify({
+            "success": False,
+            "error": "Internal server error. Please try again."
+        }), 500
+
+    return "Internal server error. Please try again.", 500
+
+
 # ---------------- FILE SIZE ERROR ----------------
 
 @app.errorhandler(413)
-def too_large(_error):
+def too_large(error):
 
     return jsonify({
+
+        "success": False,
+
         "error": "Upload is too large. Maximum combined upload size is 150 MB."
+
     }), 413
 
 
@@ -882,6 +988,7 @@ init_db()
 # ---------------- RUN APPLICATION ----------------
 
 if __name__ == "__main__":
+
     app.run(
         host="0.0.0.0",
         port=int(os.environ.get("PORT", "5000")),
